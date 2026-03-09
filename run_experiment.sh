@@ -150,13 +150,19 @@ cleanup() { kill \${SERVER_PID} >/dev/null 2>&1 || true; }
 trap cleanup EXIT
 
 for i in \$(seq 1 180); do
-  if curl -sS --fail http://127.0.0.1:${PORT}/v1/models >/dev/null; then
+  if curl -sS --fail http://127.0.0.1:${PORT}/v1/models >/dev/null 2>&1; then
+    echo "[run_experiment] server ready at iteration \${i}"
     break
   fi
+  if [ \$i -eq 60 ]; then echo "[run_experiment] still waiting for server at 120s..."; fi
+  if [ \$i -eq 120 ]; then echo "[run_experiment] still waiting for server at 240s..."; fi
   sleep 2
 done
 
-curl -sS --fail http://127.0.0.1:${PORT}/v1/models >/dev/null
+if ! curl -sS --fail http://127.0.0.1:${PORT}/v1/models >/dev/null 2>&1; then
+  echo "[run_experiment] ERROR: server did not become healthy within 360s" >&2
+  exit 1
+fi
 
 SPEED_DATA_S1='${S1_IN_CONTAINER}' \\
 SPEED_DATA_S8='${S8_IN_CONTAINER}' \\
@@ -181,8 +187,8 @@ DOCKER_ARGS=(
   -v "${EXP_DIR}/model-output:/workspace/model-output"
   -v "${EXP_DIR}:/workspace/exp"
 )
-if [[ ${#EXTRA_MOUNTS[@]} -gt 0 ]]; then
-  DOCKER_ARGS+=("${EXTRA_MOUNTS[@]}")
+if [[ ${#EXTRA_MOUNTS[@]:-0} -gt 0 ]]; then
+  DOCKER_ARGS+=("${EXTRA_MOUNTS[@]+"${EXTRA_MOUNTS[@]}"}")
 fi
 DOCKER_ARGS+=(--entrypoint bash "${DOCKER_IMAGE}" -c "${CONTAINER_CMD}")
 
